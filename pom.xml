@@ -59,9 +59,6 @@
             <version>2.7.5</version>
         </dependency>
 
-
-
-
     </dependencies>
 
     <build>
@@ -78,7 +75,7 @@
                 </configuration>
             </plugin>
 
-        <!--将我们其他用到的一些jar包全部都打包进来  -->
+            <!--将我们其他用到的一些jar包全部都打包进来  -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-shade-plugin</artifactId>

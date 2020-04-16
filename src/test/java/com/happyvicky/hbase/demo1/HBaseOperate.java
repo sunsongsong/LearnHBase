@@ -285,42 +285,31 @@ public class HBaseOperate {
 
         int pageNum= 3;
         int pageSize = 2 ;
+        Scan scan = new Scan();
+        String  startRow = "";
+        //获取到查询的第一条
         if(pageNum == 1){
-            Scan scan = new Scan();
-            //如果是查询第一页数据，就按照空来进行扫描
-            scan.withStartRow("".getBytes());
-            PageFilter pageFilter = new PageFilter(pageSize);
-            scan.setFilter(pageFilter);
-
-            ResultScanner scanner = table.getScanner(scan);
-            for (Result result : scanner) {
-                byte[] row = result.getRow();
-                System.out.println(Bytes.toString(row));
-            }
-
+            //如果是查询第一页数据，起始位置就按照空来进行扫描
+            startRow = "";
         }else{
-
-            String  startRow = "";
             //计算我们前两页的数据的最后一条，再加上一条，就是第三页的起始rowkey
-            Scan scan = new Scan();
             scan.withStartRow("".getBytes());
             PageFilter pageFilter = new PageFilter((pageNum - 1) * pageSize + 1);
             scan.setFilter(pageFilter);
             ResultScanner scanner = table.getScanner(scan);
             for (Result result : scanner) {
                 byte[] row = result.getRow();
-                startRow = Bytes.toString(row);
+                startRow = Bytes.toString(row);//上一个分页的最后一个，即为下一个分页查询的起始位置
             }
-
-            //获取第三页的数据
-            scan.withStartRow(startRow.getBytes());
-            PageFilter pageFilter1 = new PageFilter(pageSize);
-            scan.setFilter(pageFilter1);
-            ResultScanner scanner1 = table.getScanner(scan);
-            for (Result result : scanner1) {
-                byte[] row = result.getRow();
-                System.out.println(Bytes.toString(row));
-            }
+        }
+        //开始查询
+        scan.withStartRow(startRow.getBytes());
+        PageFilter pageFilter = new PageFilter(pageSize);
+        scan.setFilter(pageFilter);
+        ResultScanner scanner = table.getScanner(scan);
+        for (Result result : scanner) {
+            byte[] row = result.getRow();
+            System.out.println(Bytes.toString(row));
         }
     }
 
