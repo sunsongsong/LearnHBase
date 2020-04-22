@@ -1,4 +1,4 @@
-package com.happyvicky.hbase.demo3;
+package com.happyvicky.hbase.learn.demo3;
 
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.conf.Configured;

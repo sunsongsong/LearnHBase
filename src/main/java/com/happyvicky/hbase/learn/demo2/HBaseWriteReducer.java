@@ -1,11 +1,10 @@
-package com.happyvicky.hbase.demo2;
+package com.happyvicky.hbase.learn.demo2;
 
 import org.apache.hadoop.hbase.client.Put;
 import org.apache.hadoop.hbase.io.ImmutableBytesWritable;
 import org.apache.hadoop.hbase.mapreduce.TableReducer;
 import org.apache.hadoop.io.NullWritable;
 import org.apache.hadoop.io.Text;
-import org.apache.hadoop.mapreduce.Reducer;
 
 import java.io.IOException;
 

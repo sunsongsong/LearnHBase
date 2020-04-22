@@ -1,4 +1,4 @@
-package com.happyvicky.hbase.demo2;
+package com.happyvicky.hbase.learn.demo2;
 
 import org.apache.hadoop.io.LongWritable;
 import org.apache.hadoop.io.NullWritable;
