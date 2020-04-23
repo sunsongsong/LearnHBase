@@ -35,5 +35,9 @@
         用户关系表  relation
         存储用户发送的微博rowkey receive_content_email
         
-    
+    步骤三：实现功能
+        发送微博内容
+        添加关注用户
+        取消关注用户
+        获取关注人的微博内容
 ```
