@@ -3,6 +3,8 @@ package com.happyvicky.hbase.weibo;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.*;
 import org.apache.hadoop.hbase.client.*;
+import org.apache.hadoop.hbase.filter.RowFilter;
+import org.apache.hadoop.hbase.filter.SubstringComparator;
 import org.apache.hadoop.hbase.util.Bytes;
 
 import java.io.IOException;
@@ -251,6 +253,170 @@ public class WeiBoHBase {
         table_content.close();
         table_relation.close();
         connection.close();
+    }
+
+    /**
+     * 实现关注用户的逻辑
+     * A 用户关注了B,C,D这三个用户
+     * 第一步：A关注了B,C,D，在weibo:relation表当中attends列族当中，需要记录A用户关注了哪些人，以A用户id作为rowkey，以B,C,D作为列名，
+     * 以B,C,D作为列值，保存到attends列族里面去
+     * 第二步：B,C,D多了一个粉丝A，在weibo:relation表当中fans列族里面，以B,C,D用户id作为rowkey，然后以A用户id作为列名，A用户id作为列值，保存到fans列族里面去
+     *第三步：A用户关注了B,C,D，那么A用户就需要去查看B,C,D发送的微博内容，以B,C,D的用户id作为查询条件，查询weibo:content表，获取发送微博的rowkey，然后保存到
+     * receive_content_email表里面去
+     *
+     */
+    public void  addAttends(String uid,String...attends) throws IOException {
+
+        //第一步：用户uid关注了一批人  attends，需要将关系保存起来，保存到weibo:relation表里面去，以用户id作为rowkey，关注了哪些人的id作为
+        //列名，关注了哪些人id作为列值，保存到attends里面去
+        Connection connection = getConnection();
+
+        //记录A用户关注了哪些人
+        Table table_relation = connection.getTable(TableName.valueOf(TABLE_RELATION));
+
+        Put put = new Put(uid.getBytes());
+        //循环遍历所有关注的人
+        for (String attend : attends) {
+            put.addColumn("attends".getBytes(), attend.getBytes(), attend.getBytes());
+        }
+        table_relation.put(put);
+
+        //第二步：A用户关注了B,C,D这三个人，那么B,C,D这三个人就会多一个粉丝A，以B,C,D uid作为rowkey，将A的uid作为列名，A的uid作为列值，保存到weibo:relation表的fans列族里面去
+        for (String attend : attends) {
+            Put put1 = new Put(attend.getBytes());
+            put1.addColumn("fans".getBytes(), uid.getBytes(), uid.getBytes());
+            table_relation.put(put1);
+        }
+
+
+        //第三步：A用户关注了B,C,D那么A用户就要获取B,C,D发送的微博内容的rowkey
+        Table table_content = connection.getTable(TableName.valueOf(TABLE_CONTENT));
+        //以B,C,D用户的id作为查询条件，查询出B,C,D用户发送的所有的微博的rowkey
+        Scan scan = new Scan();
+        ArrayList<byte[]> rowkeyBytes = new ArrayList<>();
+
+
+        for (String attend : attends) {
+            //使用用户id+_ 来作为扫描条件，将所有满足条件的数据全部都扫描出来
+            RowFilter rowFilter = new RowFilter(CompareOperator.EQUAL, new SubstringComparator(attend + "_"));
+            scan.setFilter(rowFilter);
+            ResultScanner scanner = table_content.getScanner(scan);
+            for (Result result : scanner) {
+                //获取B,C,D发送的微博的内容的rowkey
+                byte[] row = result.getRow();
+                rowkeyBytes.add(row);
+            }
+
+
+        }
+
+        ArrayList<Put> recPuts = new ArrayList<>();
+
+        //第三步：获取到了所有的B,C,D发送的微博的rowkey，将这些rowkey保存到A用户的收件箱表里面去
+        if (rowkeyBytes.size() > 0) {
+            Table table_receive_content = connection.getTable(TableName.valueOf(TABLE_RECEIVE_CONTENT_EMAIL));
+            //2_158974563
+            for (byte[] rowkeyByte : rowkeyBytes) {
+                Put put1 = new Put(uid.getBytes());
+                String rowKeyStr = Bytes.toString(rowkeyByte);
+                //通过截取字符串，获取到用户的uid
+                String attendUid = rowKeyStr.substring(0, rowKeyStr.indexOf("_"));
+                //用户发送微博的时间戳
+                long parseLong = Long.parseLong(rowKeyStr.substring(rowKeyStr.indexOf("_") + 1));
+                //将A用户关注的B,C,D用户的微博的rowkey给保存起来
+                put1.addColumn("info".getBytes(), attendUid.getBytes(), parseLong, rowkeyByte);
+                recPuts.add(put1);
+
+            }
+            table_receive_content.put(recPuts);
+
+            table_receive_content.close();
+            table_content.close();
+            table_relation.close();
+            connection.close();
+        }
+    }
+
+    /**
+     * 取消关注逻辑 A 取消关注B,C,D
+     * 第一步：在weibo:relation表当中取消关注的用户，将attends列族里面关注的人，都给删除掉
+     * 第二步：在weibo:relation表当中减少粉丝，将fans列族里面删除一个A用户
+     * 第三步：在weibo:receive_content_email表当中将我们A用户获取B,C,D的关系给删除掉
+     */
+    public void cancelAttends(String uid,String...attends) throws IOException {
+        //第一步：删除关注的人
+        Connection connection = getConnection();
+        Table table_relation = connection.getTable(TableName.valueOf(TABLE_RELATION));
+
+        //删除A，关注的B,C,D用户
+        for (String cancelAttends : attends) {
+            Delete delete = new Delete(uid.getBytes());
+            delete.addColumn("attends".getBytes(),cancelAttends.getBytes());
+
+            table_relation.delete(delete);
+        }
+
+
+        //第二步：B,C,D这三个用户移除粉丝A
+        for (String cancelAttend : attends) {
+            Delete delete = new Delete(cancelAttend.getBytes());
+            delete.addColumn("fans".getBytes(),uid.getBytes());
+            table_relation.delete(delete);
+        }
+
+        //第三步：A用户不需要再收到B,C,D发送的微博内容，需要删除receive_content_email表当中对应的rowkey数据
+
+        Table table_receive_content_email = connection.getTable(TableName.valueOf(TABLE_RECEIVE_CONTENT_EMAIL));
+
+        for (String attend : attends) {
+
+            Delete delete = new Delete(uid.getBytes());
+            delete.addColumn("info".getBytes(),attend.getBytes());
+
+            table_receive_content_email.delete(delete);
+
+        }
+
+        table_receive_content_email.close();
+        table_relation.close();
+        connection.close();
+    }
+
+    /**
+     * 获取关注人的微博内容
+     * 例如A用户关注了B,C用户，那么A用户就需要获取B,C用户发送的微博内容
+     * B,C发送的微博的内容，存在了weibo:content表里面了
+     * A用户需要获取的信息，在receive_content_email表里面
+     */
+    public  void  getContent(String uid) throws IOException {
+
+        Connection connection = getConnection();
+        Table receive_content_email = connection.getTable(TableName.valueOf(TABLE_RECEIVE_CONTENT_EMAIL));
+        //直接通过rowkey来获取数据
+        Get get = new Get(uid.getBytes());
+        get.setMaxVersions(5);//设置我们获取数据的最大版本为5个，可以获取到关注用户的最近的5条微博信息
+
+        //将我们所有查询到的rowkey全部都封装到list集合里面去
+        ArrayList<Get> rowkeysList = new ArrayList<>();
+
+
+        Result result = receive_content_email.get(get);
+        Cell[] cells = result.rawCells();
+        for (Cell cell : cells) {
+            byte[] bytes = CellUtil.cloneValue(cell);//获取到单元格的值，单元格里面存储的就是我们的rowkey
+            Get get1 = new Get(bytes);
+            rowkeysList.add(get1);
+        }
+
+        //查询weibo:content表里面所有的这些rowkey对应的数据
+        Table table_content = connection.getTable(TableName.valueOf(TABLE_CONTENT));
+
+        Result[] results = table_content.get(rowkeysList);
+        for (Result result1 : results) {
+            //获取微博内容
+            byte[] value = result1.getValue("info".getBytes(), "content".getBytes());
+            System.out.println(Bytes.toString(value));
+        }
     }
 
 }
